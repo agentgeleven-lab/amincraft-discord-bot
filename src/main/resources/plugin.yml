@@ -8,7 +8,7 @@ softdepend: [MiniGameHub]
 commands:
   discordbot:
     description: Discord 机器人管理
-    usage: /discordbot <status|reload|set <项目> <值>|admins <list|add|remove>|panel …|replays <status|post-now>|keys>
+    usage: /discordbot <status|reload|set <项目> <值>|admins|sources <list|add|remove>|panel …|replays <status|post-now>|keys>
     permission: aminplay.discord.admin
 permissions:
   aminplay.discord.admin:

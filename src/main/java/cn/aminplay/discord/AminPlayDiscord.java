@@ -47,6 +47,7 @@ public final class AminPlayDiscord extends JavaPlugin implements Listener, Disco
     private ExecutorService chatQueue;
     private Interactions interactions;
     private Subscriptions subscriptions;
+    private OptOut optOut;   // 2026-10-08 privacy
     private Notifier notifier;
     // 2026-10-07 message collect
     private volatile Collector collector;
@@ -82,6 +83,7 @@ public final class AminPlayDiscord extends JavaPlugin implements Listener, Disco
         chatQueue = Executors.newSingleThreadExecutor(r -> daemon(r, "AminPlayDiscord-chat"));
         interactions = new Interactions(this);
         subscriptions = new Subscriptions(new java.io.File(getDataFolder(), "subscriptions.yml"), getLogger());
+        optOut = new OptOut(new java.io.File(getDataFolder(), "optout.yml"), getLogger());   // 2026-10-08 privacy
         notifier = new Notifier(rest, subscriptions, getLogger());
         collector = newCollector();   // 2026-10-07 message collect
         gateway = new DiscordGateway(http, cfg.token, cfg.intents(), this, getLogger());
@@ -393,6 +395,7 @@ public final class AminPlayDiscord extends JavaPlugin implements Listener, Disco
         JsonObject author = d.getAsJsonObject("author");
         if (author == null || (author.has("bot") && author.get("bot").getAsBoolean())) return;
         if (d.has("webhook_id")) return;
+        if (optOut != null && optOut.has(str(author, "id"))) return;   // 2026-10-08 privacy: opted out of the chat bridge
         String name = str(author, "global_name");
         if (d.has("member") && d.getAsJsonObject("member").has("nick") && !d.getAsJsonObject("member").get("nick").isJsonNull()) {
             name = d.getAsJsonObject("member").get("nick").getAsString();
@@ -427,6 +430,10 @@ public final class AminPlayDiscord extends JavaPlugin implements Listener, Disco
         return applicationId;
     }
 
+    OptOut optOut() {   // 2026-10-08 privacy
+        return optOut;
+    }
+
     Subscriptions subscriptions() {
         return subscriptions;
     }
@@ -444,12 +451,20 @@ public final class AminPlayDiscord extends JavaPlugin implements Listener, Disco
     }
 
     private Collector newCollector() {
-        return new Collector(rest, http, getDataFolder().toPath().resolve("exports"), cfg.collectZone, cfg.collectMaxMessages,
-                cfg.collectMaxFileBytes, cfg.collectMaxTotalBytes, getLogger());
+        java.nio.file.Path exports = getDataFolder().toPath().resolve("exports");
+        Collector.cleanup(exports, cfg.collectKeepDays, getLogger());   // 2026-10-08 privacy: expired results
+        return new Collector(rest, http, exports, cfg.collectZone, cfg.collectMaxMessages,
+                cfg.collectMaxFileBytes, cfg.collectMaxTotalBytes, getLogger())
+                .policy(new java.util.LinkedHashSet<>(cfg.collectSources), id -> optOut != null && optOut.has(id));
+    }
+
+    /** 2026-10-08 privacy：每次收集前顺便清理过期结果。 */
+    void cleanupExports() {
+        Collector.cleanup(getDataFolder().toPath().resolve("exports"), cfg.collectKeepDays, getLogger());
     }
 
     /**
-     * 控制台：discordbot collect [user=<id>] [channel=<id>] [from=<时间>] [to=<时间>] [files=false] [threads=false]
+     * 控制台：discordbot collect channel=<反馈频道id> [from=<时间>] [to=<时间>] [files=false] [threads=false]
      * 时间里的空格用 _ 代替（from=2026-10-06_20:00）。默认只存到 exports/；
      * 加 post=<文字频道ID> for=<用户ID> 时，同时像 /minmin 收集 一样开私密子区（只有那个用户能看到）。
      */
@@ -481,7 +496,7 @@ public final class AminPlayDiscord extends JavaPlugin implements Listener, Disco
         }
         String user = kv.get("user") == null ? null : kv.get("user").replaceAll("[^0-9]", "");
         String channel = kv.get("channel") == null ? null : kv.get("channel").replaceAll("[^0-9]", "");
-        Collector.Request req = new Collector.Request(cfg.guildId, user == null || user.isEmpty() ? null : user,
+        Collector.Request req = new Collector.Request(cfg.guildId, null,   // 2026-10-08 privacy: no per-member collect (user= ignored)
                 channel == null || channel.isEmpty() ? null : channel, range[0], range[1],
                 !"false".equalsIgnoreCase(kv.get("files")), !"false".equalsIgnoreCase(kv.get("threads")), "控制台");
         String post = kv.get("post") == null ? null : kv.get("post").replaceAll("[^0-9]", "");
@@ -494,6 +509,7 @@ public final class AminPlayDiscord extends JavaPlugin implements Listener, Disco
         sender.sendMessage(Component.text("开始收集…", NamedTextColor.AQUA));
         worker.execute(() -> {
             try {
+                cleanupExports();   // 2026-10-08 privacy
                 Collector.Result r = collector.collect(req, msg -> {});
                 sender.sendMessage(Component.text("收集完成：" + r.messages() + " 条、" + r.files().size() + " 个附件、"
                         + r.bigFiles().size() + " 个太大未下载；" + r.scope() + "。存档：plugins/AminPlayDiscord/exports/"
@@ -771,23 +787,23 @@ public final class AminPlayDiscord extends JavaPlugin implements Listener, Disco
         panelCommand(sender, new String[]{"panel", "list"});
     }
 
-    /** /discordbot admins list | add <身份组id> | remove <身份组id>：额外允许使用管理指令的身份组（roles.admin）。 */
-    private void adminsCommand(CommandSender sender, String[] args) {
-        List<String> list = new java.util.ArrayList<>(getConfig().getStringList("roles.admin"));
+    /** /discordbot admins|sources list | add <id> | remove <id>：roles.admin（管理身份组）/ collect.sources（可收集的反馈频道）。 */
+    private void idListCommand(CommandSender sender, String[] args, String path, String what) {
+        List<String> list = new java.util.ArrayList<>(getConfig().getStringList(path));
         String op = args[1].toLowerCase(java.util.Locale.ROOT);
         if (op.equals("list")) {
-            sender.sendMessage(Component.text("管理身份组：" + (list.isEmpty() ? "（无）" : String.join("、", list)), NamedTextColor.AQUA));
+            sender.sendMessage(Component.text(what + "：" + (list.isEmpty() ? "（无）" : String.join("、", list)), NamedTextColor.AQUA));
             return;
         }
         if ((op.equals("add") || op.equals("remove")) && args.length >= 3) {
             String id = args[2].replaceAll("[^0-9]", "");
-            if (id.isEmpty()) { sender.sendMessage(Component.text("身份组 id 只能是数字", NamedTextColor.RED)); return; }
+            if (id.isEmpty()) { sender.sendMessage(Component.text("id 只能是数字", NamedTextColor.RED)); return; }
             boolean changed = op.equals("add") ? !list.contains(id) && list.add(id) : list.remove(id);
-            if (changed) { getConfig().set("roles.admin", list); saveConfig(); cfg = BotConfig.load(getConfig()); }
+            if (changed) { getConfig().set(path, list); saveConfig(); cfg = BotConfig.load(getConfig()); }
             sender.sendMessage(Component.text((changed ? "已" + (op.equals("add") ? "添加 " : "移除 ") : "没有变化：") + id, changed ? NamedTextColor.GREEN : NamedTextColor.YELLOW));
             return;
         }
-        sender.sendMessage(Component.text("/discordbot admins list | add <身份组id> | remove <身份组id>", NamedTextColor.YELLOW));
+        sender.sendMessage(Component.text("/discordbot " + args[0].toLowerCase(java.util.Locale.ROOT) + " list | add <id> | remove <id>", NamedTextColor.YELLOW));
     }
 
     /** /discordbot set 能改的项目（故意不包括 token：Token 只在 config.yml 里手动填）。 */
@@ -825,7 +841,12 @@ public final class AminPlayDiscord extends JavaPlugin implements Listener, Disco
             return onCommand(sender, command, label, new String[]{"reload"});
         }
         if (args.length >= 2 && args[0].equalsIgnoreCase("admins")) {   // 2026-10-08 github: roles.admin by command
-            adminsCommand(sender, args);
+            idListCommand(sender, args, "roles.admin", "管理身份组");
+            return true;
+        }
+        if (args.length >= 2 && args[0].equalsIgnoreCase("sources")) {   // 2026-10-08 privacy: collect.sources by command
+            idListCommand(sender, args, "collect.sources", "反馈频道");
+            collector = newCollector();
             return true;
         }
         if (args.length >= 1 && args[0].equalsIgnoreCase("collect")) {   // 2026-10-07 message collect

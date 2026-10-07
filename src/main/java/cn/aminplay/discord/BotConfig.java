@@ -44,6 +44,8 @@ final class BotConfig {
     final int collectMaxMessages;
     final long collectMaxFileBytes;
     final long collectMaxTotalBytes;
+    final List<String> collectSources;   // 2026-10-08 privacy: only these feedback channels/forums (and their threads)
+    final int collectKeepDays;
     final String replaysForum;
     final String replaysThread;
     final String replaysTitle;
@@ -97,6 +99,9 @@ final class BotConfig {
         collectMaxMessages = Math.max(100, c.getInt("collect.max-messages", 20000));
         collectMaxFileBytes = Math.max(1, c.getLong("collect.max-file-mb", 25)) * 1024 * 1024;
         collectMaxTotalBytes = Math.max(1, c.getLong("collect.max-total-mb", 500)) * 1024 * 1024;
+        collectSources = new ArrayList<>();   // 2026-10-08 privacy
+        for (String s : c.getStringList("collect.sources")) if (!id(s).isEmpty()) collectSources.add(id(s));
+        collectKeepDays = Math.max(1, c.getInt("collect.keep-days", 30));
         replaysForum = id(c.getString("replays.forum-channel", ""));   // 2026-10-08 github: no built-in id, set with /discordbot set replays.forum-channel <id>
         replaysThread = id(c.getString("replays.thread-id", ""));
         replaysTitle = c.getString("replays.thread-title", "📼 Amincraft 对局回放");

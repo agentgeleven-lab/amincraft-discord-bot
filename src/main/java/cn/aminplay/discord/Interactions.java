@@ -77,6 +77,10 @@ final class Interactions {
     private static JsonArray commands() {
         JsonArray a = new JsonArray();
         a.add(cmd("status", "状态", "查看 MC 服务器状态和在线玩家", null));
+        a.add(cmd("privacy", "隐私", "选择是否让机器人收集你的消息（反馈汇总、聊天互通）", null,   // 2026-10-08 privacy
+                sub("optout", "退出", "以后不再收集你的消息，也不转发到游戏里"),
+                sub("optin", "恢复", "恢复收集和转发"),
+                sub("status", "查看", "查看你现在的选择")));
         a.add(cmd("key", "领取密钥", "领取盗版玩家登录密钥（每个 Discord 账号只发一次，只有你能看到）", null));   // 2026-10-07 auth-gate
         a.add(cmd("lookup", "查询", "查询盗版密钥记录（游戏名或 Discord 成员）", ADMIN_PERMS,
                 opt(3, "player", "玩家", "游戏名（含改名前的名字）", false, false),
@@ -114,9 +118,8 @@ final class Interactions {
                 opt(3, "player", "玩家", "玩家名", true, true),
                 opt(3, "reason", "原因", "踢出原因", false, false)));
         a.add(cmd("banlist", "封禁列表", "查看被封禁的玩家", ADMIN_PERMS));
-        a.add(cmd("collect", "收集", "收集一段时间内的发言和附件，结果发到只有你能看到的私密子区", ADMIN_PERMS,
-                opt(6, "member", "成员", "只收这个人的发言（不填=所有人）", false, false),
-                collectChannelOpt(),
+        a.add(cmd("collect", "收集", "收集反馈频道里一段时间内的发言和附件，结果发到只有你能看到的私密子区", ADMIN_PERMS,
+                collectChannelOpt(),   // 2026-10-08 privacy: no member filter, feedback channels only
                 opt(3, "from", "开始", "例如 今天、昨天、3d、2026-10-06、10-06 20:00（日本时间；不填=今天 0 点）", false, false),
                 opt(3, "to", "结束", "例如 现在、2026-10-06、10-06 23:00（不填=现在）", false, false),
                 opt(5, "threads", "含子区", "选了频道时，是否连它下面的子区 / 贴子一起收（默认是）", false, false),
@@ -172,7 +175,7 @@ final class Interactions {
     }
 
     private static JsonObject collectChannelOpt() {
-        JsonObject o = opt(7, "channel", "频道", "只收这个频道 / 论坛 / 子区（不填=全服务器）", false, false);
+        JsonObject o = opt(7, "channel", "频道", "要收集的反馈频道 / 论坛 / 贴子（只能选设置好的反馈频道）", true, false);
         JsonArray types = new JsonArray();
         for (int t : new int[]{0, 2, 5, 10, 11, 12, 13, 15, 16}) types.add(t);
         o.add("channel_types", types);
@@ -233,7 +236,7 @@ final class Interactions {
 
     private void command(Ctx ctx) throws Exception {
         String name = ctx.command;
-        if (!name.equals("status") && !name.equals("key") && !ctx.isAdmin()) {   // 2026-10-07 auth-gate: 领取密钥 is for everyone
+        if (!name.equals("status") && !name.equals("key") && !name.equals("privacy") && !ctx.isAdmin()) {   // 2026-10-08 privacy: for everyone   // 2026-10-07 auth-gate: 领取密钥 is for everyone
             ctx.ephemeral = true;
             ctx.text("⛔ 你没有权限使用这个指令。");
             return;
@@ -241,6 +244,7 @@ final class Interactions {
         switch (name) {
             case "status" -> status(ctx);
             case "key" -> claimKey(ctx);   // 2026-10-07 auth-gate
+            case "privacy" -> privacy(ctx);   // 2026-10-08 privacy
             case "lookup" -> lookupKeys(ctx);
             case "collect" -> collect(ctx);
             case "announce" -> announceModal(ctx);
@@ -1085,6 +1089,25 @@ final class Interactions {
         ctx.callback(8, data);
     }
 
+    // =============== /minmin 隐私（2026-10-08 privacy） ===============
+
+    private void privacy(Ctx ctx) throws Exception {
+        ctx.ephemeral = true;
+        OptOut o = plugin.optOut();
+        String sub = ctx.subcommand();
+        if ("optout".equals(sub)) {
+            o.set(ctx.userId(), true);
+            ctx.text("✅ 已退出：以后机器人不会再收集你的消息（反馈汇总），聊天互通也不会再把你的消息转发到游戏里。"
+                    + "想删除已经收集的内容，请私信管理员。随时可以用 /minmin 隐私 恢复 改回来。");
+        } else if ("optin".equals(sub)) {
+            o.set(ctx.userId(), false);
+            ctx.text("✅ 已恢复：你的消息会照常出现在反馈汇总和聊天互通里。");
+        } else {
+            ctx.text(o.has(ctx.userId()) ? "你现在是「已退出」：机器人不收集你的消息，也不转发到游戏里。"
+                    : "你现在是「正常」：你在反馈频道的消息可能会被整理进反馈汇总；在互通频道的消息会转发到游戏里。可以用 /minmin 隐私 退出。");
+        }
+    }
+
     // =============== /minmin 收集（2026-10-07 message collect） ===============
 
     private void collect(Ctx ctx) throws Exception {
@@ -1109,7 +1132,8 @@ final class Interactions {
         }
         try {
             ctx.defer(true);
-            Collector.Request req = new Collector.Request(cfg.guildId, ctx.option("member"), ctx.option("channel"),
+            plugin.cleanupExports();   // 2026-10-08 privacy
+            Collector.Request req = new Collector.Request(cfg.guildId, null, ctx.option("channel"),
                     range[0], range[1], !"false".equals(ctx.option("files")), !"false".equals(ctx.option("threads")), ctx.actorName());
             Collector.Result r = plugin.collector().collect(req, msg -> {
                 try {
@@ -1121,6 +1145,8 @@ final class Interactions {
             String thread = postCollectResult(host, ctx.userId(), req, r);
             ctx.text("✅ 收集完成：" + r.messages() + " 条消息、" + r.files().size() + " 个附件 → <#" + thread + ">");
             plugin.adminLog("📥 " + ctx.actorName() + " 收集了消息：" + r.scope() + "（" + r.messages() + " 条）");
+        } catch (IllegalArgumentException e) {   // 2026-10-08 privacy: not a feedback channel
+            ctx.text("⛔ " + e.getMessage());
         } finally {
             plugin.collectLock().release();
         }

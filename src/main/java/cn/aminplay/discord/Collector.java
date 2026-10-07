@@ -71,6 +71,47 @@ final class Collector {
     private final long maxTotalBytes;
     private final Logger log;
 
+    // 2026-10-08 privacy：只允许收集 sources 里的反馈频道（和它们的贴子）；退出的用户的消息不记录。null = 不限制（测试用）
+    private Set<String> sources;
+    private java.util.function.Predicate<String> optedOut = id -> false;
+
+    Collector policy(Set<String> sources, java.util.function.Predicate<String> optedOut) {
+        this.sources = sources;
+        this.optedOut = optedOut == null ? id -> false : optedOut;
+        return this;
+    }
+
+    /** 删除 exportRoot 下超过 keepDays 天的收集结果，返回删掉的个数。 */
+    static int cleanup(Path exportRoot, int keepDays, Logger log) {
+        if (exportRoot == null || !Files.isDirectory(exportRoot)) return 0;
+        Instant limit = Instant.now().minus(Duration.ofDays(Math.max(1, keepDays)));
+        int n = 0;
+        try (var dirs = Files.list(exportRoot)) {
+            for (Path d : dirs.toList()) {
+                if (!Files.isDirectory(d) || !Files.getLastModifiedTime(d).toInstant().isBefore(limit)) continue;
+                try (var walk = Files.walk(d)) {
+                    for (Path p : walk.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(p);
+                }
+                n++;
+            }
+        } catch (IOException e) {
+            if (log != null) log.warning("清理过期收集结果失败：" + e.getMessage());
+        }
+        if (n > 0 && log != null) log.info("已删除 " + n + " 个超过 " + keepDays + " 天的收集结果");
+        return n;
+    }
+
+    /** null = 可以收；否则是给管理员看的原因。ch = 要收的频道/子区（null = 全服务器）。 */
+    static String notAllowed(Set<String> sources, JsonObject ch) {
+        if (sources == null) return null;
+        if (ch == null) return "只能收集指定的反馈频道：请选一个反馈频道或贴子。";
+        String id = ch.has("id") ? ch.get("id").getAsString() : "";
+        String parent = ch.has("parent_id") && !ch.get("parent_id").isJsonNull() ? ch.get("parent_id").getAsString() : "";
+        if (sources.contains(id) || THREAD_TYPES.contains(ch.get("type").getAsInt()) && sources.contains(parent)) return null;
+        return sources.isEmpty() ? "还没有设置反馈频道，请管理员在控制台执行 discordbot sources add <频道ID>。"
+                : "这个频道不在反馈频道列表里，不能收集。";
+    }
+
     Collector(DiscordRest rest, HttpClient http, Path exportRoot, ZoneId zone, int maxMessages,
               long maxFileBytes, long maxTotalBytes, Logger log) {
         this.rest = rest;
@@ -107,6 +148,8 @@ final class Collector {
         if (req.channelId() != null) {
             JsonObject ch = channels.get(req.channelId());
             if (ch == null) ch = rest.get("/channels/" + req.channelId()).getAsJsonObject();
+            String why = notAllowed(sources, ch);   // 2026-10-08 privacy
+            if (why != null) throw new IllegalArgumentException(why);
             int type = ch.get("type").getAsInt();
             if (THREAD_TYPES.contains(type)) {
                 targets.add(ch);
@@ -117,6 +160,8 @@ final class Collector {
                 scope = label(ch, channels) + (req.threads() ? "（含子区 / 贴子）" : "");
             }
         } else {
+            String why = notAllowed(sources, null);   // 2026-10-08 privacy: no whole-server collect
+            if (why != null) throw new IllegalArgumentException(why);
             scope = "全服务器（机器人能看到的地方）";
             for (JsonObject ch : channels.values()) {
                 int type = ch.get("type").getAsInt();
@@ -159,6 +204,7 @@ final class Collector {
                             continue;
                         }
                         if (req.userId() != null && !req.userId().equals(m.getAsJsonObject("author").get("id").getAsString())) continue;
+                        if (optedOut.test(m.getAsJsonObject("author").get("id").getAsString())) continue;   // 2026-10-08 privacy
                         m.addProperty("_channel", cid);
                         all.add(m);
                     }

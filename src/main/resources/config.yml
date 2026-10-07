@@ -87,6 +87,11 @@ collect:
   max-file-mb: 25
   # 一次收集最多下载多少 MB 附件
   max-total-mb: 500
+  # 只能收集这些反馈频道 / 论坛（和它们下面的贴子）的 id。留空 = 不能收集。
+  # 用 /discordbot sources list | add <id> | remove <id> 设置
+  sources: []
+  # 收集结果（plugins/AminPlayDiscord/exports/）保存多少天，过期自动删除
+  keep-days: 30
 
 # 2026-10-07 盗版玩家登录密钥（需要 MiniGameHub 的 auth-gate；服务器没装 AuthMe 时这些都不起作用）
 # 玩家用 /minmin 领取密钥（或身份面板上的「领取盗版登录密钥」按钮），得到 AMC-XXXX-XXXX-XXXX（只有自己能看到），进服 /key 密钥 绑定。

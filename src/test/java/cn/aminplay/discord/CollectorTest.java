@@ -194,6 +194,33 @@ public final class CollectorTest {
         eq(1, r3.messages(), "单个子区 1 条");
         check(r3.scope().startsWith("子区"), "范围说明是子区");
 
+        // 2026-10-08 privacy：只能收反馈频道（和它下面的贴子），退出的人不记录，过期结果自动删除
+        Collector strict = new Collector(rest, http, out, JST, 20000, 1024 * 1024, 10 * 1024 * 1024, Logger.getLogger("t"))
+                .policy(java.util.Set.of("102"), id -> id.equals("222"));
+        boolean refused = false;
+        try { strict.collect(new Collector.Request("g1", null, null, from, to, false, true, "测试"), x -> {}); } catch (IllegalArgumentException e) { refused = true; }
+        check(refused, "限制后不能全服收集");
+        refused = false;
+        try { strict.collect(new Collector.Request("g1", null, "101", from, to, false, true, "测试"), x -> {}); } catch (IllegalArgumentException e) { refused = true; }
+        check(refused, "不在反馈频道列表里的频道不能收");
+        eq(1, strict.collect(new Collector.Request("g1", null, "201", from, to, false, true, "测试"), x -> {}).messages(), "反馈论坛下的贴子可以收");
+        eq(1, strict.collect(new Collector.Request("g1", null, "102", from, to, false, true, "测试"), x -> {}).messages(), "反馈论坛本身可以收");
+        Collector none = new Collector(rest, http, out, JST, 20000, 1024 * 1024, 10 * 1024 * 1024, Logger.getLogger("t"))
+                .policy(java.util.Set.of(), id -> false);
+        refused = false;
+        try { none.collect(new Collector.Request("g1", null, "201", from, to, false, true, "测试"), x -> {}); } catch (IllegalArgumentException e) { refused = e.getMessage().contains("sources add"); }
+        check(refused, "没设置反馈频道时不能收集，并提示怎么设置");
+        Collector opted = new Collector(rest, http, out, JST, 20000, 1024 * 1024, 10 * 1024 * 1024, Logger.getLogger("t"))
+                .policy(java.util.Set.of("102"), id -> id.equals("111"));
+        eq(0, opted.collect(new Collector.Request("g1", null, "201", from, to, false, true, "测试"), x -> {}).messages(), "退出的人的消息不记录");
+        Path old = out.resolve("old-export");
+        Files.createDirectories(old.resolve("files"));
+        Files.writeString(old.resolve("files/a.txt"), "x");
+        Files.setLastModifiedTime(old, java.nio.file.attribute.FileTime.from(Instant.now().minus(java.time.Duration.ofDays(31))));
+        int fresh = (int) Files.list(out).count() - 1;
+        eq(1, Collector.cleanup(out, 30, null), "删除 1 个超过 30 天的结果");
+        check(!Files.exists(old) && Files.list(out).count() == fresh, "过期的删掉，新的都在");
+
         // 上限截断
         Collector small = new Collector(rest, http, out, JST, 100, 1024, 1024, Logger.getLogger("t"));
         Collector.Result r4 = small.collect(new Collector.Request("g1", null, "101", from, to, true, false, "测试"), x -> {});
