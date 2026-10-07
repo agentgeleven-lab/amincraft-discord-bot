@@ -1,0 +1,103 @@
+# Amincraft Discord 机器人配置
+# 所有 id：在 Discord 里打开「用户设置 → 高级 → 开发者模式」，然后右键频道/身份组/服务器 → 复制 ID。
+# id 请用引号括起来，例如 "123456789012345678"。
+
+discord:
+  # Developer Portal → 你的应用 → Bot → Reset Token。不要发给任何人。
+  token: ""
+  # Discord 服务器（guild）的 id。机器人只加入了一个服务器时，留空会自动填写。
+  guild-id: ""
+
+channels:
+  # /公告 不选频道时默认发到这里，可以是文字频道或论坛（论坛会开新贴）（留空=发到你输入指令的频道）
+  announce: ""
+  # 开服 / 关服通知发到这里（留空=不通知）
+  status: ""
+  # 聊天互通 + 进出服提示的频道（留空=关闭）
+  bridge: ""
+  # 管理操作记录（谁封禁了谁、谁执行了什么指令）（留空=不记录）
+  log: ""
+  # /minmin 收集 的私密子区：在论坛 / 公告频道里用指令时，改开在这个文字频道（留空=只能在文字频道里用）
+  collect: ""
+
+roles:
+  # 除了「管理员」和「管理服务器」权限的人以外，额外允许使用管理指令的身份组 id
+  admin: []
+  # 面板上的按钮。两种类型：
+  #   type: subscribe  只记名单，不占身份组。发公告选它时，临时建一个同名身份组 @ 名单里的人，15 秒后自动删除。
+  #   type: role       真正的身份组（会一直占一个名额）。id 留空时按名字找，找不到就自动创建并把 id 写回这里。
+  # key 是内部名字（英文/数字，建好后别改，否则名单对不上）。
+  panel:
+    - key: mc
+      name: "MC玩家"
+      type: subscribe
+      emoji: "🎮"
+      description: "开服通知和重要公告"
+    # - key: update
+    #   name: "版本更新"
+    #   type: subscribe
+    #   emoji: "📦"
+    #   description: "新版本上线时通知你"
+
+panel:
+  title: "🔔 订阅通知"
+  text: "点下面的按钮订阅，再点一次取消。订阅后，发布相关公告时会 @ 你。"
+
+bridge:
+  # MC 聊天 ↔ Discord 频道互通。需要在 Developer Portal → Bot 打开 Message Content Intent
+  chat: false
+  # 玩家进出服时在互通频道提示
+  join-leave: true
+
+notify:
+  # 开服通知时 @ 面板里第一个身份组（服务器经常重启的话建议关着）
+  ping-on-start: false
+  # 机器人状态显示在线人数
+  presence: true
+
+commands:
+  # 禁止通过 Discord 的 /执行 运行的指令
+  blocked: [op, deop]
+
+# 2026-10-07 每日对局回放：MiniGameHub 每天日本时间 01:00 把前一天所有小游戏的回放（含人机局）打成 zip，
+# 机器人把它发到下面这个论坛里的回放贴（一个贴子，每天回复一条，带 zip 附件）。
+replays:
+  enabled: true
+  # 论坛频道 id（留空 = 不发回放；用 /discordbot set replays.forum-channel <id> 设置）
+  forum-channel: ""
+  # 回放贴（子区）的 id。留空 = 第一次发送时自动在论坛里开贴「📼 Amincraft 对局回放」并把 id 写回这里
+  thread-id: ""
+  thread-title: "📼 Amincraft 对局回放"
+  # 论坛要求发贴选标签时用哪个标签（名字或 id；留空 = 第一个）
+  forum-tag: ""
+  # 每隔多少秒看一次有没有待发的回放包
+  poll-seconds: 60
+
+server:
+  name: "Amincraft"
+  # 显示在开服通知和 /状态 里的服务器地址（留空=不显示）
+  address: ""
+
+collect:
+  # 「今天」「昨天」和记录里的时间按这个时区
+  timezone: "Asia/Tokyo"
+  # 一次最多收多少条（超过就只收最早的这些）
+  max-messages: 20000
+  # 单个附件超过多少 MB 就不下载，只给原消息链接
+  max-file-mb: 25
+  # 一次收集最多下载多少 MB 附件
+  max-total-mb: 500
+
+# 2026-10-07 盗版玩家登录密钥（需要 MiniGameHub 的 auth-gate；服务器没装 AuthMe 时这些都不起作用）
+# 玩家用 /minmin 领取密钥（或身份面板上的「领取盗版登录密钥」按钮），得到 AMC-XXXX-XXXX-XXXX（只有自己能看到），进服 /key 密钥 绑定。
+# 每个 Discord 账号只发一次；用 /minmin 封禁 成员 封这个 Discord 账号 = 封禁它绑定的游戏号，并且不能再领。
+keys:
+  enabled: true
+  # Discord 账号注册满几天才能领（防小号）
+  min-account-days: 7
+  # 加入本 Discord 服务器满几天才能领
+  min-member-days: 1
+  # 在 /minmin 身份面板 上加一个「领取盗版登录密钥」按钮
+  panel-button: true
+  # 除了仅自己可见的回复，再私信一份备份（玩家关了私信也照样能领）
+  dm-copy: true
