@@ -81,7 +81,17 @@ final class Collector {
         return this;
     }
 
-    /** 删除 exportRoot 下超过 keepDays 天的收集结果，返回删掉的个数。 */
+    /** 2026-10-08 privacy：结果发到 Discord 之后马上删除本地文件（本地不保存）。 */
+    static void deleteDir(Path dir, Logger log) {
+        if (dir == null || !Files.exists(dir)) return;
+        try (var walk = Files.walk(dir)) {
+            for (Path p : walk.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(p);
+        } catch (IOException e) {
+            if (log != null) log.warning("删除收集临时文件失败（下次启动或收集时会再清理）：" + e.getMessage());
+        }
+    }
+
+    /** 删除 exportRoot 下超过 keepDays 天的收集结果（正常情况下发完就删了，这里清理残留），返回删掉的个数。 */
     static int cleanup(Path exportRoot, int keepDays, Logger log) {
         if (exportRoot == null || !Files.isDirectory(exportRoot)) return 0;
         Instant limit = Instant.now().minus(Duration.ofDays(Math.max(1, keepDays)));

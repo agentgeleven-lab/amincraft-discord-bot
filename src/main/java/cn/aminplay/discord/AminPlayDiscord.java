@@ -465,8 +465,8 @@ public final class AminPlayDiscord extends JavaPlugin implements Listener, Disco
 
     /**
      * 控制台：discordbot collect channel=<反馈频道id> [from=<时间>] [to=<时间>] [files=false] [threads=false]
-     * 时间里的空格用 _ 代替（from=2026-10-06_20:00）。默认只存到 exports/；
-     * 加 post=<文字频道ID> for=<用户ID> 时，同时像 /minmin 收集 一样开私密子区（只有那个用户能看到）。
+     * 时间里的空格用 _ 代替（from=2026-10-06_20:00）。2026-10-08 privacy：必须写 post= 和 for=，结果只发到私密子区，本地文件发完就删；
+     * 结果开私密子区（只有那个用户能看到），本地临时文件发完就删。
      */
     private void collectCommand(CommandSender sender, String[] args) {
         if (rest == null || collector == null) {
@@ -501,9 +501,9 @@ public final class AminPlayDiscord extends JavaPlugin implements Listener, Disco
                 !"false".equalsIgnoreCase(kv.get("files")), !"false".equalsIgnoreCase(kv.get("threads")), "控制台");
         String post = kv.get("post") == null ? null : kv.get("post").replaceAll("[^0-9]", "");
         String forUser = kv.get("for") == null ? null : kv.get("for").replaceAll("[^0-9]", "");
-        if (post != null && (post.isEmpty() || forUser == null || forUser.isEmpty())) {
+        if (post == null || post.isEmpty() || forUser == null || forUser.isEmpty()) {   // 2026-10-08 privacy: results only go to a private thread
             collectLock.release();
-            sender.sendMessage(Component.text("post= 需要同时写 for=<用户ID>（私密子区要拉谁进去）。", NamedTextColor.YELLOW));
+            sender.sendMessage(Component.text("收集结果只发到 Discord 私密子区，本地不保存：请写 post=<文字频道ID> for=<用户ID>。", NamedTextColor.YELLOW));
             return;
         }
         sender.sendMessage(Component.text("开始收集…", NamedTextColor.AQUA));
@@ -512,11 +512,12 @@ public final class AminPlayDiscord extends JavaPlugin implements Listener, Disco
                 cleanupExports();   // 2026-10-08 privacy
                 Collector.Result r = collector.collect(req, msg -> {});
                 sender.sendMessage(Component.text("收集完成：" + r.messages() + " 条、" + r.files().size() + " 个附件、"
-                        + r.bigFiles().size() + " 个太大未下载；" + r.scope() + "。存档：plugins/AminPlayDiscord/exports/"
-                        + r.dir().getFileName() + "/transcript.md", NamedTextColor.GREEN));
-                if (post != null) {
+                        + r.bigFiles().size() + " 个太大未下载；" + r.scope() + "。", NamedTextColor.GREEN));
+                try {
                     String thread = interactions.postCollectResult(post, forUser, req, r);
                     sender.sendMessage(Component.text("已发到私密子区：https://discord.com/channels/" + cfg.guildId + "/" + thread, NamedTextColor.GREEN));
+                } finally {
+                    Collector.deleteDir(r.dir(), getLogger());   // 2026-10-08 privacy: no local copy
                 }
             } catch (Exception e) {
                 sender.sendMessage(Component.text("收集失败：" + e.getMessage(), NamedTextColor.RED));

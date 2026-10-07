@@ -220,6 +220,11 @@ public final class CollectorTest {
         int fresh = (int) Files.list(out).count() - 1;
         eq(1, Collector.cleanup(out, 30, null), "删除 1 个超过 30 天的结果");
         check(!Files.exists(old) && Files.list(out).count() == fresh, "过期的删掉，新的都在");
+        Path tmp = out.resolve("posted");
+        Files.createDirectories(tmp.resolve("files"));
+        Files.writeString(tmp.resolve("files/b.txt"), "y");
+        Collector.deleteDir(tmp, null);
+        check(!Files.exists(tmp), "发完之后本地临时文件全部删除");
 
         // 上限截断
         Collector small = new Collector(rest, http, out, JST, 100, 1024, 1024, Logger.getLogger("t"));

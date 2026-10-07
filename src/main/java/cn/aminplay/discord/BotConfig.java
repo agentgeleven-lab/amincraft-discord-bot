@@ -101,7 +101,7 @@ final class BotConfig {
         collectMaxTotalBytes = Math.max(1, c.getLong("collect.max-total-mb", 500)) * 1024 * 1024;
         collectSources = new ArrayList<>();   // 2026-10-08 privacy
         for (String s : c.getStringList("collect.sources")) if (!id(s).isEmpty()) collectSources.add(id(s));
-        collectKeepDays = Math.max(1, c.getInt("collect.keep-days", 30));
+        collectKeepDays = Math.max(1, c.getInt("collect.keep-days", 1));   // 2026-10-08 privacy: results are deleted right after posting; this only cleans leftovers
         replaysForum = id(c.getString("replays.forum-channel", ""));   // 2026-10-08 github: no built-in id, set with /discordbot set replays.forum-channel <id>
         replaysThread = id(c.getString("replays.thread-id", ""));
         replaysTitle = c.getString("replays.thread-title", "📼 Amincraft 对局回放");

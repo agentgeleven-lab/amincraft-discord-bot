@@ -1142,7 +1142,12 @@ final class Interactions {
                     // 交互令牌过期（超过 15 分钟）就不再显示进度，结果照样发到子区
                 }
             });
-            String thread = postCollectResult(host, ctx.userId(), req, r);
+            String thread;
+            try {
+                thread = postCollectResult(host, ctx.userId(), req, r);
+            } finally {
+                Collector.deleteDir(r.dir(), null);   // 2026-10-08 privacy: no local copy
+            }
             ctx.text("✅ 收集完成：" + r.messages() + " 条消息、" + r.files().size() + " 个附件 → <#" + thread + ">");
             plugin.adminLog("📥 " + ctx.actorName() + " 收集了消息：" + r.scope() + "（" + r.messages() + " 条）");
         } catch (IllegalArgumentException e) {   // 2026-10-08 privacy: not a feedback channel
@@ -1198,7 +1203,7 @@ final class Interactions {
         if (r.truncated()) d.append("\n⚠️ 超过数量上限，只收了最早的一部分，请缩小时间段再收一次。");
         if (r.emptyContent() > 0) d.append("\n⚠️ 有 ").append(r.emptyContent()).append(" 条消息内容是空的：请在 Developer Portal → Bot 打开 **Message Content Intent**。");
         if (!r.skipped().isEmpty()) d.append("\n机器人看不到、跳过了：").append(BotRules.truncate(String.join("、", r.skipped()), 300));
-        d.append("\n\n服务器存档：`exports/").append(r.dir().getFileName()).append("`");
+        d.append("\n\n收集结果只保存在这个私密子区里，服务器上不留副本。");   // 2026-10-08 privacy
         JsonObject embed = new JsonObject();
         embed.addProperty("title", "📥 消息收集完成");
         embed.addProperty("description", BotRules.truncate(d.toString(), 4000));
@@ -1211,7 +1216,7 @@ final class Interactions {
         if (md <= limit) docs.add(r.transcript());
         if (md + js <= limit) docs.add(r.json());
         if (docs.isEmpty()) {
-            embed.addProperty("description", BotRules.truncate(d + "\n\n记录文件太大，Discord 放不下，请到服务器存档里看。", 4000));
+            embed.addProperty("description", BotRules.truncate(d + "\n\n记录文件太大，Discord 放不下。请缩小时间段，或者分贴子分别收集。", 4000));
             plugin.rest().post(path, summary);
         } else {
             plugin.rest().postFiles(path, summary, docs);
