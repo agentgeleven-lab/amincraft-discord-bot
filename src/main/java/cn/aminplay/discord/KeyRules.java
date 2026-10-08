@@ -4,7 +4,7 @@ import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.Map;
 
-/** 2026-10-07 auth-gate：盗版密钥相关的纯逻辑（资格、回复文字），由 KeyFlowTest 覆盖。 */
+/** 2026-10-07 auth-gate：学习版密钥相关的纯逻辑（资格、回复文字），由 KeyFlowTest 覆盖。 */
 final class KeyRules {
     private KeyRules() {}
 
@@ -44,28 +44,28 @@ final class KeyRules {
     }
 
     static String howTo(String key) {
-        return "1. 用盗版启动器选一个**不是正版玩家用的名字**进服（正版名字会提示「无效会话」）\n"
+        return "1. 用启动器的离线账号（HMCL / PCL）选一个**不是正版玩家用的名字**进服（正版名字会提示「无效会话」）\n"
                 + "2. 进服后输入 `/key " + key + "`\n"
                 + "3. 再设置密码：`/register 密码 密码`（以后进服 `/login 密码`）\n"
-                + "⚠️ 一个 Discord 账号只能绑定一个游戏名；不要把密钥发给别人。盗版连接不加密，密码别和其他地方一样。";
+                + "⚠️ 一个 Discord 账号只能绑定一个游戏名；不要把密钥发给别人。学习版连接不加密，密码别和其他地方一样。";
     }
 
     /** 仅自己可见的回复。dm: null = 没尝试私信，true = 私信备份已发，false = 私信发不出去。 */
     static String claimReply(Map<String, Object> r, Boolean dm) {
         String st = String.valueOf(r.get("status"));
         return switch (st) {
-            case "new", "resend" -> "🔑 你的 Amincraft 盗版登录密钥：`" + r.get("key") + "`"
+            case "new", "resend" -> "🔑 你的 Amincraft 学习版登录密钥：`" + r.get("key") + "`"
                     + (st.equals("resend") ? "（之前领过，还没绑定，这是同一个密钥）" : "") + "\n" + howTo(String.valueOf(r.get("key")))
                     + (dm == null ? "" : dm ? "\n📩 已私信你一份备份。" : "\n📪 私信备份没发出去（你关闭了服务器成员私信）。请自己保存好这条消息里的密钥。");
             case "bound" -> "你的密钥已经绑定游戏名 **" + r.get("name") + "**，可以直接进服登录。换名字请找管理员。";
             case "banned" -> "⛔ 你的 Discord 账号已被封禁，不能领取密钥。" + (r.get("reason") == null ? "" : "原因：" + r.get("reason"));
-            case "disabled" -> "现在服务器不需要密钥（盗版密钥功能没有开启）。";
+            case "disabled" -> "现在服务器不需要密钥（学习版密钥功能没有开启）。";
             default -> "❌ 领取失败，请稍后再试或联系管理员。";
         };
     }
 
     static String dmCopy(String key) {
-        return "🔑 你的 Amincraft 盗版登录密钥（备份）：`" + key + "`\n" + howTo(key);
+        return "🔑 你的 Amincraft 学习版登录密钥（备份）：`" + key + "`\n" + howTo(key);
     }
 
     static String loginConfirm(String name, int seconds) {

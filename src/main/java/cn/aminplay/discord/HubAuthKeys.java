@@ -9,7 +9,7 @@ import java.util.Map;
 import java.util.function.Consumer;
 
 /**
- * 2026-10-07 auth-gate：MiniGameHub 注册的 Bukkit 服务 cn.friendhub.auth.CrackedKeyApi（盗版玩家 Discord 密钥表），只用 JDK 类型。
+ * 2026-10-07 auth-gate：MiniGameHub 注册的 Bukkit 服务 cn.friendhub.auth.CrackedKeyApi（学习版玩家 Discord 密钥表），只用 JDK 类型。
  * 和 {@link HubReplaySource} 一样用反射调用，本插件不需要拿 MiniGameHub 编译；MiniGameHub 没装 / 太旧时 {@link #find()} 返回 null。
  * 密钥只在 claim() 的返回值里出现：只发给那一个 Discord 用户（仅自己可见的回复 + 私信备份），不写日志。
  */

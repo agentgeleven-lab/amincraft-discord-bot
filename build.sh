@@ -24,6 +24,8 @@ find src/test/java -name '*.java' > "$OUT/test-sources.txt"
 "$JDK/java.exe" -Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -cp "$CP;$OUT/classes;$OUT/test-classes" cn.aminplay.discord.CollectorTest | tee -a "$OUT/unit-tests.log"
 # 2026-10-07 auth-gate
 "$JDK/java.exe" -Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -cp "$CP;$OUT/classes;$OUT/test-classes" cn.aminplay.discord.KeyFlowTest | tee -a "$OUT/unit-tests.log"
-[ "$(grep -c ' passed, ' "$OUT/unit-tests.log")" -ge 6 ] && ! grep ' passed, ' "$OUT/unit-tests.log" | grep -vq ' 0 failed' || { echo "单元测试失败"; exit 1; }
+# 2026-10-08 bot-plots: 类脑市地块申请（假 Discord + 假 City API）
+"$JDK/java.exe" -Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -cp "$CP;$OUT/classes;$OUT/test-classes" cn.aminplay.discord.PlotDeskTest | tee -a "$OUT/unit-tests.log"
+[ "$(grep -c ' passed, ' "$OUT/unit-tests.log")" -ge 7 ] && ! grep ' passed, ' "$OUT/unit-tests.log" | grep -vq ' 0 failed' || { echo "单元测试失败"; exit 1; }
 "$JDK/jar.exe" --create --file "$OUT/AminPlayDiscord.jar" -C "$OUT/classes" .
 sha1sum "$OUT/AminPlayDiscord.jar" | tee "$OUT/sha1.txt"

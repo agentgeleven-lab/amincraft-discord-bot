@@ -74,6 +74,16 @@ final class Interactions {
 
     static final String ROOT = "minmin";
 
+    /** 2026-10-08 bot-plots：注册日志里的指令清单（按 commands() 的中文名生成，不再手写）。 */
+    static String commandSummary() {
+        List<String> names = new ArrayList<>();
+        for (JsonElement e : commands()) {
+            JsonObject c = e.getAsJsonObject();
+            names.add(c.getAsJsonObject("name_localizations").get("zh-CN").getAsString());
+        }
+        return "/" + ROOT + " " + String.join(" / ", names);
+    }
+
     private static JsonArray commands() {
         JsonArray a = new JsonArray();
         a.add(cmd("status", "状态", "查看 MC 服务器状态和在线玩家", null));
@@ -81,8 +91,16 @@ final class Interactions {
                 sub("optout", "退出", "以后不再收集你的消息，也不转发到游戏里"),
                 sub("optin", "恢复", "恢复收集和转发"),
                 sub("status", "查看", "查看你现在的选择")));
-        a.add(cmd("key", "领取密钥", "领取盗版玩家登录密钥（每个 Discord 账号只发一次，只有你能看到）", null));   // 2026-10-07 auth-gate
-        a.add(cmd("lookup", "查询", "查询盗版密钥记录（游戏名或 Discord 成员）", ADMIN_PERMS,
+        a.add(cmd("key", "领取密钥", "领取学习版玩家登录密钥（每个 Discord 账号只发一次，只有你能看到）", null));   // 2026-10-07 auth-gate
+        // 2026-10-08 bot-plots：类脑市地块申请（只给绑定了游戏号的成员；结果只有自己能看到）
+        JsonObject reason = opt(3, "reason", "理由", "为什么想要这块地、打算建什么（管理员审批时会看到）", true, false);
+        reason.addProperty("max_length", 300);
+        a.add(cmd("plotapply", "申请地块", "申请类脑市的一块地（需要绑定游戏号）", null,
+                opt(3, "plot", "地块", "地块编号，可以输入关键字搜索", true, true), reason));
+        a.add(cmd("plotjoin", "加入申请", "加入别人对一块地的申请，一起共同开发（需要绑定游戏号）", null,
+                opt(3, "application", "申请", "要加入的申请（从列表里选，也可以填地块编号）", true, true)));
+        a.add(cmd("plotmine", "我的申请", "查看你的类脑市地块申请和结果", null));
+        a.add(cmd("lookup", "查询", "查询学习版密钥记录（游戏名或 Discord 成员）", ADMIN_PERMS,
                 opt(3, "player", "玩家", "游戏名（含改名前的名字）", false, false),
                 opt(6, "member", "成员", "Discord 成员", false, false)));
         a.add(cmd("announce", "公告", "发布服务器公告（弹出填写框；论坛频道会开新贴）", ADMIN_PERMS,
@@ -106,7 +124,7 @@ final class Interactions {
                 pingChannelOpt()));
         a.add(cmd("cmd", "执行", "在 MC 服务器控制台执行指令", ADMIN_PERMS,
                 opt(3, "command", "指令", "要执行的指令，例如 say 大家好", true, false)));
-        a.add(cmd("ban", "封禁", "封禁 MC 玩家，或封禁 Discord 成员（连同他绑定的盗版游戏号）", ADMIN_PERMS,
+        a.add(cmd("ban", "封禁", "封禁 MC 玩家，或封禁 Discord 成员（连同他绑定的学习版游戏号）", ADMIN_PERMS,
                 opt(3, "player", "玩家", "玩家名（和「成员」二选一）", false, true),
                 opt(6, "member", "成员", "Discord 成员：封他绑定的所有游戏号，并且不能再领密钥", false, false),   // 2026-10-07 auth-gate
                 opt(3, "reason", "原因", "封禁原因", false, false),
@@ -213,6 +231,10 @@ final class Interactions {
                 loginButton(ctx);
                 return;
             }
+            if (ctx.type == 3 && ctx.data.has("custom_id") && ctx.data.get("custom_id").getAsString().startsWith(PlotRules.CODEV)) {   // 2026-10-08 bot-plots: co-developer DM button
+                plugin.plots().handle(d);
+                return;
+            }
             if (!d.has("guild_id") || !cfg.guildId.equals(d.get("guild_id").getAsString())) {
                 if (ctx.type != 4) ctx.text("这个机器人只在指定的服务器里工作。");
                 return;
@@ -236,7 +258,7 @@ final class Interactions {
 
     private void command(Ctx ctx) throws Exception {
         String name = ctx.command;
-        if (!name.equals("status") && !name.equals("key") && !name.equals("privacy") && !ctx.isAdmin()) {   // 2026-10-08 privacy: for everyone   // 2026-10-07 auth-gate: 领取密钥 is for everyone
+        if (!name.equals("status") && !name.equals("key") && !name.equals("privacy") && !PlotDesk.COMMANDS.contains(name) && !ctx.isAdmin()) {   // 2026-10-08 bot-plots: plot commands for everyone (bound accounts checked in PlotDesk)   // 2026-10-08 privacy: for everyone   // 2026-10-07 auth-gate: 领取密钥 is for everyone
             ctx.ephemeral = true;
             ctx.text("⛔ 你没有权限使用这个指令。");
             return;
@@ -245,6 +267,7 @@ final class Interactions {
             case "status" -> status(ctx);
             case "key" -> claimKey(ctx);   // 2026-10-07 auth-gate
             case "privacy" -> privacy(ctx);   // 2026-10-08 privacy
+            case "plotapply", "plotjoin", "plotmine" -> plugin.plots().handle(ctx.d);   // 2026-10-08 bot-plots
             case "lookup" -> lookupKeys(ctx);
             case "collect" -> collect(ctx);
             case "announce" -> announceModal(ctx);
@@ -318,6 +341,10 @@ final class Interactions {
 
     private void modal(Ctx ctx) throws Exception {
         String id = ctx.data.get("custom_id").getAsString();
+        if (id.startsWith(PlotRules.MODAL)) {   // 2026-10-08 bot-plots: reject reason
+            plugin.plots().handle(ctx.d);
+            return;
+        }
         if (!id.startsWith("ann|")) return;
         if (!ctx.isAdmin()) {
             ctx.ephemeral = true;
@@ -475,11 +502,11 @@ final class Interactions {
         addButtons(rows, roles, 1);
         addButtons(rows, subs, 2);
         if (cfg.keysEnabled && cfg.keysPanelButton && rows.size() < 5) {   // 2026-10-07 auth-gate
-            desc.append("\n\n**盗版玩家**：点 🔑 领取登录密钥（每个 Discord 账号只发一次，只有你能看到）");
+            desc.append("\n\n**学习版玩家**：点 🔑 领取登录密钥（每个 Discord 账号只发一次，只有你能看到）");
             JsonObject b = new JsonObject();
             b.addProperty("type", 2);
             b.addProperty("style", 2);
-            b.addProperty("label", "领取盗版登录密钥");
+            b.addProperty("label", "领取学习版登录密钥");
             b.addProperty("custom_id", "key|claim");
             JsonObject em = new JsonObject();
             em.addProperty("name", "🔑");
@@ -646,6 +673,10 @@ final class Interactions {
 
     private void component(Ctx ctx) throws IOException {
         String id = ctx.data.get("custom_id").getAsString();
+        if (PlotDesk.ownsComponent(id)) {   // 2026-10-08 bot-plots: [同意]/[驳回]
+            plugin.plots().handle(ctx.d);
+            return;
+        }
         ctx.ephemeral = true;
         if (id.equals("key|claim")) {   // 2026-10-07 auth-gate: panel button
             try {
@@ -751,7 +782,7 @@ final class Interactions {
         String result;
         if (t.discordId() != null && keys != null) {
             Map<String, Object> r = keys.banDiscord(t.discordId(), finalReason, ctx.actorName(), expires == null ? 0 : expires.getTime());
-            result = "（盗版绑定账号：Discord <@" + t.discordId() + "> 一起封禁，不能再领密钥；封了 " + r.get("names") + "）";
+            result = "（学习版绑定账号：Discord <@" + t.discordId() + "> 一起封禁，不能再领密钥；封了 " + r.get("names") + "）";
         } else {
             result = plugin.sync(() -> {
                 Player online = Bukkit.getPlayerExact(name);
@@ -798,7 +829,7 @@ final class Interactions {
                 ctx.defer(true);
                 Map<String, Object> r = keys.unbanDiscord(did, ctx.actorName());
                 if ("ok".equals(r.get("status"))) {
-                    ctx.text("✅ 已解封 **" + name + "**（盗版绑定账号，Discord <@" + did + "> 一起解封）");
+                    ctx.text("✅ 已解封 **" + name + "**（学习版绑定账号，Discord <@" + did + "> 一起解封）");
                     plugin.adminLog("✅ " + ctx.actorName() + " 解封了 **" + name + "** 和 Discord <@" + did + ">");
                     return;
                 }
@@ -886,13 +917,13 @@ final class Interactions {
         return e.getBanTarget() instanceof PlayerProfile p ? p : null;
     }
 
-    // =============== 2026-10-07 auth-gate：盗版密钥 / 按 Discord 封禁 / 正版 UUID ===============
+    // =============== 2026-10-07 auth-gate：学习版密钥 / 按 Discord 封禁 / 正版 UUID ===============
 
     record BanTarget(java.util.UUID uuid, String name, String discordId, String note) {
     }
 
     /**
-     * 封禁对象：在线玩家 → 绑定密钥的盗版号（离线 UUID + Discord）→ 服务器缓存 → Mojang 正版 UUID → 都没有才用离线 UUID。
+     * 封禁对象：在线玩家 → 绑定密钥的学习版号（离线 UUID + Discord）→ 服务器缓存 → Mojang 正版 UUID → 都没有才用离线 UUID。
      * worker 线程调用（可能要访问 Mojang）。
      */
     BanTarget resolveBanTarget(String name) throws Exception {
@@ -911,7 +942,7 @@ final class Interactions {
         String[] premium = MojangLookup.uuidOf(name);
         if (premium != null) return new BanTarget(java.util.UUID.fromString(premium[0]), premium[1], null, "\n（这个名字是正版账号，已按正版 UUID 封禁；他还没进过服务器）");
         java.util.UUID off = java.util.UUID.nameUUIDFromBytes(("OfflinePlayer:" + name).getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        return new BanTarget(off, name, null, "\n⚠️ 这个玩家从没进过服务器，也不是正版名字（或查不到 Mojang），已按盗版 UUID 封禁，请确认名字拼写正确。");
+        return new BanTarget(off, name, null, "\n⚠️ 这个玩家从没进过服务器，也不是正版名字（或查不到 Mojang），已按学习版 UUID 封禁，请确认名字拼写正确。");
     }
 
     private void banMember(Ctx ctx, String member, String reason) throws Exception {
@@ -948,7 +979,7 @@ final class Interactions {
         ctx.ephemeral = true;
         BotConfig cfg = plugin.cfg();
         if (!cfg.keysEnabled) {
-            ctx.text("盗版密钥功能没有开启。");
+            ctx.text("学习版密钥功能没有开启。");
             return;
         }
         HubAuthKeys keys = plugin.authKeys();
@@ -968,7 +999,7 @@ final class Interactions {
         Boolean dm = null;
         if (r.get("key") instanceof String key && cfg.keysDmCopy) dm = plugin.sendDm(ctx.userId(), Interactions.message(KeyRules.dmCopy(key), null));
         ctx.text(KeyRules.claimReply(r, dm));   // the key goes only into this ephemeral reply (+ the DM copy); never logged
-        if ("new".equals(r.get("status"))) plugin.adminLog("🔑 " + ctx.actorName() + "（<@" + ctx.userId() + ">）领取了盗版登录密钥");
+        if ("new".equals(r.get("status"))) plugin.adminLog("🔑 " + ctx.actorName() + "（<@" + ctx.userId() + ">）领取了学习版登录密钥");
     }
 
     private void lookupKeys(Ctx ctx) throws Exception {
@@ -1025,6 +1056,10 @@ final class Interactions {
 
     private void autocomplete(Ctx ctx) throws Exception {
         String cmd = ctx.command;
+        if (PlotDesk.COMMANDS.contains(cmd)) {   // 2026-10-08 bot-plots
+            plugin.plots().handle(ctx.d);
+            return;
+        }
         String focused = "";
         String typed = "";
         for (JsonObject o : ctx.leafOptions()) {

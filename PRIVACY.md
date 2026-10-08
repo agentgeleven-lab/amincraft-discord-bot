@@ -8,6 +8,7 @@
 - **Discord 账号信息**：用户 ID、用户名，以及你在本服务器里的身份组。用途：领取身份组、使用指令时判断权限。
 - **订阅名单**：你在面板上订阅了哪些通知（只记录用户 ID）。用途：发公告时提醒订阅的人。
 - **服务器密钥和账号绑定**：你的 Discord 用户 ID、你填写的 Minecraft 游戏名、发给你的服务器密钥，以及领取时间。用途：让你登录游戏服务器，并防止一人领取多个密钥。领取时会检查你的 Discord 账号注册时间和加入本服务器的时间是否达到门槛，这两个时间只用于判断，不单独保存。
+- **类脑市地块申请**：你在游戏里或用 `/minmin 申请地块` 提交的地块申请（申请人游戏名、地块编号、申请理由；游戏号绑定了 Discord 的会附上你的 Discord 提及）会发到**只有管理员能看到的管理频道**，用于审批，结果同步回游戏；需要共同开发者同意的变动，机器人会私信你「同意 / 拒绝」按钮（只发按钮，不读取私信内容）。
 - **反馈频道的消息**：只在管理员指定的反馈频道（例如 bug 汇报、建议）里，管理员使用收集功能时，收集这些频道和贴子里的消息文字、作者名字和附件（附件会下载保存）。用途：整理成汇总，发到只有发起收集的管理员能看到的 Discord 私密子区，用来修复问题、改进服务器。整理时的临时文件在发送完成后**立即删除**，服务器上不保留副本。其它频道的消息不会被收集。
 - **聊天互通**：目前**关闭**。如果以后开启（把一个指定频道的消息转发到游戏聊天），会先更新本政策。
 - **游戏数据**：你在游戏服务器里的对局记录、排行榜和回放由游戏服务器产生，机器人会把其中一部分发到 Discord（例如每日回放、排行榜）。以后可能会增加个人数据汇报。
@@ -39,6 +40,7 @@
   - Discord user ID, username and roles in our server, used for role buttons and permission checks.
   - Notification subscriptions (user ID only).
   - Server-key binding: Discord user ID, the Minecraft name you enter, the issued key and when it was issued. Account age and server join date are checked when you claim a key, but are not stored.
+  - Plot applications for the in-game city: when you apply for a plot (in game or with `/minmin 申请地块`), your Minecraft name, the plot and your reason (plus a Discord mention if your game account is bound) are posted to an **admin-only channel** for approval, and the result is synced back to the game; co-developer confirmations are sent to you as DM buttons (the bot does not read DM content).
   - Feedback messages, **only** from the feedback channels an admin has configured (bug reports, suggestions), when an admin runs the collect command: message text, author names and attachments. They are compiled into a summary posted to a private Discord thread visible only to that admin. Temporary files are deleted immediately after posting. **Message content is not stored outside Discord.** No other channels are collected.
   - The chat bridge is currently **disabled**. If it is ever enabled, this policy will be updated first.
   - Game data such as match records, leaderboards and replays is produced by the game server, and some of it is posted to Discord.

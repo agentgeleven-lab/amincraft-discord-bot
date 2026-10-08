@@ -11,6 +11,7 @@ Amincraft Minecraft 服务器的 Discord 机器人。它作为 Paper 1.21.11 插
 - 收集反馈：只能在设置好的反馈频道（bug 汇报、建议）里收集消息，整理成汇总发到管理员的私密子区；服务器上不保留副本。
 - 隐私：成员可以用 `/minmin 隐私 退出` 选择不被收集、不被转发到游戏里。
 - 服务器密钥：玩家在 Discord 领取和账号绑定的服务器登录密钥。
+- 类脑市地块申请：新申请发到管理频道，管理员点按钮同意 / 驳回（可填原因），结果同步回游戏；绑定了游戏号的成员可以 `/minmin 申请地块`、`/minmin 加入申请`、`/minmin 我的申请`；共同开发者的权限变动用私信按钮确认（私信发不出去就改成游戏内确认）。
 - 每日对局回放：把前一天的回放包发到论坛的回放贴。
 - 开服/关服通知、在线人数状态；聊天互通（可选，默认关闭）。
 
@@ -29,7 +30,8 @@ Amincraft Minecraft 服务器的 Discord 机器人。它作为 Paper 1.21.11 插
    - `/discordbot admins list | add <身份组id> | remove <身份组id>`：额外允许使用管理指令的身份组。
    - `/discordbot sources list | add <频道id> | remove <频道id>`：可以收集的反馈频道 / 论坛（不设置就不能收集）。
    - `/discordbot panel …`：身份组和订阅面板。
-   - `/discordbot status`、`/discordbot reload`、`/discordbot replays status`、`/discordbot keys`。
+   - `/discordbot status`、`/discordbot reload`、`/discordbot replays status`、`/discordbot keys`、`/discordbot plots`（地块申请状态；`plots post-open` 补发还没发的待审申请）。
+   - 地块申请的管理频道：`/discordbot set channels.plots <频道id>`（请用只有管理员能看的频道）。
 
 仓库里不带任何服务器或频道 id，全部由使用者自己设置。
 
@@ -42,7 +44,7 @@ TC=/path/to/toolchain bash build.sh 1
 
 构建产物是 `build-1/AminPlayDiscord.jar`，构建时会同时跑单元测试。
 
-服务器密钥功能需要配套的 MiniGameHub 插件；没有它时，这个功能会显示「不可用」，其它功能不受影响。
+服务器密钥和类脑市地块申请需要配套的 MiniGameHub 插件；没有它时，这些功能会显示「不可用」，其它功能不受影响。
 
 ## 许可证
 GPL-3.0，见 [LICENSE](LICENSE)。

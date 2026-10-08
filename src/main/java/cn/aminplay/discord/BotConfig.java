@@ -25,6 +25,7 @@ final class BotConfig {
     final String statusChannel;
     final String bridgeChannel;
     final String logChannel;
+    final String plotsChannel;   // 2026-10-08 bot-plots: 类脑市地块申请的管理频道
     final List<String> adminRoles;
     final List<PanelRole> panelRoles;
     final String panelTitle;
@@ -51,7 +52,7 @@ final class BotConfig {
     final String replaysTitle;
     final String replaysTag;
     final int replaysPollSeconds;
-    // 2026-10-07 auth-gate：盗版玩家 Discord 密钥
+    // 2026-10-07 auth-gate：学习版玩家 Discord 密钥
     final boolean keysEnabled;
     final int keysMinAccountDays;
     final int keysMinMemberDays;
@@ -65,6 +66,7 @@ final class BotConfig {
         statusChannel = id(c.getString("channels.status", ""));
         bridgeChannel = id(c.getString("channels.bridge", ""));
         logChannel = id(c.getString("channels.log", ""));
+        plotsChannel = id(c.getString("channels.plots", ""));   // 2026-10-08 bot-plots
         adminRoles = new ArrayList<>();
         for (String s : c.getStringList("roles.admin")) if (!id(s).isEmpty()) adminRoles.add(id(s));
         panelRoles = new ArrayList<>();

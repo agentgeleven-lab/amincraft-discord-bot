@@ -62,6 +62,9 @@ public final class AminPlayDiscord extends JavaPlugin implements Listener, Disco
     private final java.util.Set<java.util.UUID> joinPending = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private final java.util.Set<java.util.UUID> joinAnnounced = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private final java.util.concurrent.atomic.AtomicBoolean replayBusy = new java.util.concurrent.atomic.AtomicBoolean();
+    // 2026-10-08 bot-plots: MiniGameHub City application API (null = MiniGameHub missing / too old) + the Discord side of plot applications
+    private volatile HubCity city;
+    private PlotDesk plots;
 
     // ================= 生命周期 =================
 
@@ -84,6 +87,14 @@ public final class AminPlayDiscord extends JavaPlugin implements Listener, Disco
         interactions = new Interactions(this);
         subscriptions = new Subscriptions(new java.io.File(getDataFolder(), "subscriptions.yml"), getLogger());
         optOut = new OptOut(new java.io.File(getDataFolder(), "optout.yml"), getLogger());   // 2026-10-08 privacy
+        plots = new PlotDesk(new PlotDesk.Host() {   // 2026-10-08 bot-plots
+            @Override public DiscordRest rest() { return rest; }
+            @Override public BotConfig cfg() { return cfg; }
+            @Override public String applicationId() { return applicationId; }
+            @Override public PlotDesk.City city() { return AminPlayDiscord.this.city(); }
+            @Override public PlotDesk.Accounts accounts() { return PlotDesk.accountsOf(authKeys()); }
+            @Override public void adminLog(String text) { AminPlayDiscord.this.adminLog(text); }
+        }, new PlotStore(new java.io.File(getDataFolder(), "plots-posted.yml"), getLogger()), getLogger());
         notifier = new Notifier(rest, subscriptions, getLogger());
         collector = newCollector();   // 2026-10-07 message collect
         gateway = new DiscordGateway(http, cfg.token, cfg.intents(), this, getLogger());
@@ -108,6 +119,41 @@ public final class AminPlayDiscord extends JavaPlugin implements Listener, Disco
         Bukkit.getScheduler().runTaskTimerAsynchronously(this, () -> replayTick(false, null), 20L * 60, 20L * cfg.replaysPollSeconds);
         if (cfg.presence) Bukkit.getScheduler().runTaskTimer(this, this::refreshPresence, 100L, 1200L);
         Bukkit.getScheduler().runTask(this, this::hookAuthKeys);   // 2026-10-07 auth-gate
+        Bukkit.getScheduler().runTask(this, this::hookCity);   // 2026-10-08 bot-plots
+    }
+
+    /** 2026-10-08 bot-plots：找 MiniGameHub 的类脑市申请接口（没有 = 地块功能显示「不可用」）。 */
+    HubCity city() {
+        HubCity c = city;
+        if (c == null) {
+            c = HubCity.find();
+            city = c;
+        }
+        return c;
+    }
+
+    PlotDesk plots() {
+        return plots;
+    }
+
+    private void hookCity() {
+        city = null;
+        HubCity c = city();
+        if (c == null || rest == null || plots == null) return;
+        try {
+            c.setEventSink(e -> {   // main thread: copy and hand over to a worker
+                Map<String, Object> copy = new java.util.HashMap<>(e);
+                worker.execute(() -> plots.onEvent(copy));
+            });
+            String missing = c.missing();
+            getLogger().info("已连接 MiniGameHub 类脑市申请接口" + (missing.isEmpty() ? "" : "（缺少：" + missing + "，这些功能不可用）"));
+        } catch (Exception e) {
+            getLogger().warning("连接 MiniGameHub 类脑市申请接口失败：" + e);
+        }
+        worker.execute(() -> {
+            int n = plots.catchUp(20);
+            if (n > 0) getLogger().info("已把 " + n + " 个待审地块申请补发到管理频道");
+        });
     }
 
     /** 2026-10-07 auth-gate：找 MiniGameHub 的密钥接口，并接收它的事件（登录门禁通过、Discord 登录确认、封禁同步）。 */
@@ -126,20 +172,22 @@ public final class AminPlayDiscord extends JavaPlugin implements Listener, Disco
         if (k == null || rest == null) return;
         try {
             k.setEventSink(this::onHubEvent);
-            getLogger().info("已连接 MiniGameHub 盗版密钥接口");
+            getLogger().info("已连接 MiniGameHub 学习版密钥接口");
         } catch (Exception e) {
-            getLogger().warning("连接 MiniGameHub 盗版密钥接口失败：" + e);
+            getLogger().warning("连接 MiniGameHub 学习版密钥接口失败：" + e);
         }
     }
 
     @EventHandler
     public void onServiceRegister(org.bukkit.event.server.ServiceRegisterEvent e) {   // 2026-10-07 auth-gate: MiniGameHub (re)started
         if (e.getProvider().getService().getName().equals(HubAuthKeys.API)) Bukkit.getScheduler().runTask(this, this::hookAuthKeys);
+        if (e.getProvider().getService().getName().equals(HubCity.API)) Bukkit.getScheduler().runTask(this, this::hookCity);   // 2026-10-08 bot-plots
     }
 
     @EventHandler
     public void onServiceUnregister(org.bukkit.event.server.ServiceUnregisterEvent e) {
         if (e.getProvider().getService().getName().equals(HubAuthKeys.API)) authKeys = null;
+        if (e.getProvider().getService().getName().equals(HubCity.API)) city = null;   // 2026-10-08 bot-plots
     }
 
     /** 主线程（MiniGameHub 调用），不能阻塞。 */
@@ -210,6 +258,11 @@ public final class AminPlayDiscord extends JavaPlugin implements Listener, Disco
         try {   // 2026-10-07 auth-gate
             HubAuthKeys k = authKeys;
             if (k != null) k.setEventSink(null);
+        } catch (Exception ignored) {
+        }
+        try {   // 2026-10-08 bot-plots
+            HubCity c = city;
+            if (c != null) c.setEventSink(null);
         } catch (Exception ignored) {
         }
         if (rest != null && !cfg.statusChannel.isEmpty()) {
@@ -293,7 +346,7 @@ public final class AminPlayDiscord extends JavaPlugin implements Listener, Disco
         try {
             rest.put("/applications/" + applicationId + "/guilds/" + cfg.guildId + "/commands", Interactions.definitions());
             commandsRegistered = true;
-            getLogger().info("Discord 斜杠指令已注册：/minmin 状态 / 领取密钥 / 查询 / 公告 / 身份面板 / 通知组 / 通知 / 收集 / 执行 / 封禁 / 解封 / 踢出 / 封禁列表");
+            getLogger().info("Discord 斜杠指令已注册：" + Interactions.commandSummary());   // 2026-10-08 bot-plots: list the real commands
         } catch (DiscordRest.DiscordException e) {
             getLogger().warning("注册斜杠指令失败：" + e.friendly()
                     + "（邀请机器人时要勾选 applications.commands）");
@@ -811,7 +864,7 @@ public final class AminPlayDiscord extends JavaPlugin implements Listener, Disco
     private static final List<String> SETTABLE = List.of("discord.guild-id", "channels.announce", "channels.status",
             "channels.bridge", "channels.log", "server.name", "server.address", "bridge.chat", "bridge.join-leave",
             "notify.ping-on-start", "notify.presence", "replays.forum-channel", "replays.thread-id", "replays.enabled",
-            "channels.collect", "collect.timezone", "replays.forum-tag");   // 2026-10-07 message collect   // 2026-10-07 daily replay bundle: replays.*
+            "channels.collect", "collect.timezone", "replays.forum-tag", "channels.plots");   // 2026-10-08 bot-plots: channels.plots   // 2026-10-07 message collect   // 2026-10-07 daily replay bundle: replays.*
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
@@ -839,7 +892,9 @@ public final class AminPlayDiscord extends JavaPlugin implements Listener, Disco
             else getConfig().set(path, value);
             saveConfig();
             sender.sendMessage(Component.text("已设置 " + path + " = " + (value.isEmpty() ? "（空）" : value) + "，正在重新加载…", NamedTextColor.GREEN));
-            return onCommand(sender, command, label, new String[]{"reload"});
+            boolean r = onCommand(sender, command, label, new String[]{"reload"});
+            if (path.equals("channels.plots") && !value.isEmpty() && worker != null && plots != null) worker.execute(() -> plots.catchUp(20));   // 2026-10-08 bot-plots
+            return r;
         }
         if (args.length >= 2 && args[0].equalsIgnoreCase("admins")) {   // 2026-10-08 github: roles.admin by command
             idListCommand(sender, args, "roles.admin", "管理身份组");
@@ -865,11 +920,35 @@ public final class AminPlayDiscord extends JavaPlugin implements Listener, Disco
         if (args.length >= 1 && args[0].equalsIgnoreCase("keys")) {   // 2026-10-07 auth-gate
             HubAuthKeys k = authKeys();
             try {
-                sender.sendMessage(Component.text(k == null ? "盗版密钥：MiniGameHub 接口不可用" : "盗版密钥：" + k.status() + "，机器人 keys.enabled=" + cfg.keysEnabled
+                sender.sendMessage(Component.text(k == null ? "学习版密钥：MiniGameHub 接口不可用" : "学习版密钥：" + k.status() + "，机器人 keys.enabled=" + cfg.keysEnabled
                         + "，领取门槛 账号 " + cfg.keysMinAccountDays + " 天 / 入群 " + cfg.keysMinMemberDays + " 天", NamedTextColor.AQUA));
             } catch (Exception ex) {
-                sender.sendMessage(Component.text("盗版密钥：出错 " + ex, NamedTextColor.RED));
+                sender.sendMessage(Component.text("学习版密钥：出错 " + ex, NamedTextColor.RED));
             }
+            return true;
+        }
+        if (args.length >= 1 && args[0].equalsIgnoreCase("plots")) {   // 2026-10-08 bot-plots: /discordbot plots [post-open]
+            if (plots == null) {
+                sender.sendMessage(Component.text("类脑市地块申请：机器人没启动（没有 Token）。", NamedTextColor.YELLOW));
+                return true;
+            }
+            HubCity c = city();
+            if (args.length >= 2 && args[1].equalsIgnoreCase("post-open")) {
+                sender.sendMessage(Component.text("正在补发还没发到管理频道的待审申请（最多 50 条）…", NamedTextColor.GRAY));
+                worker.execute(() -> {
+                    int n = plots.catchUp(50);
+                    Bukkit.getScheduler().runTask(this, () -> sender.sendMessage(Component.text("已补发 " + n + " 条。", NamedTextColor.GREEN)));
+                });
+                return true;
+            }
+            Map<String, Object> st = null;
+            try {
+                if (c != null) st = c.status();
+            } catch (Exception ignored) {
+            }
+            for (String line : plots.status(st)) sender.sendMessage(Component.text(line, NamedTextColor.AQUA));
+            if (c != null && !c.missing().isEmpty()) sender.sendMessage(Component.text("接口缺少的方法：" + c.missing(), NamedTextColor.YELLOW));
+            sender.sendMessage(Component.text("/discordbot plots | plots post-open；/discordbot set channels.plots <id>", NamedTextColor.GRAY));
             return true;
         }
         if (args.length == 1 && args[0].equalsIgnoreCase("status")) {
